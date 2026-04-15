@@ -1,0 +1,32 @@
+
+FROM python:3.11-slim
+
+# Install system dependencies for PDF processing
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential gcc libpq-dev libmagic1 libgl1 curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies first (cached unless requirements change)
+COPY requirements.txt .
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
+ENV PYTHONPATH=/app
+
+# Copy application code
+COPY agents/       ./agents/
+COPY api/          ./api/
+COPY database/     ./database/
+COPY config/       ./config/
+COPY shared/       ./shared/
+
+# Create necessary directories
+RUN mkdir -p uploads/cvs uploads/jds logs
+
+# Non-root user for security
+RUN useradd -m -u 1001 hrapp && chown -R hrapp:hrapp /app
+USER hrapp
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
