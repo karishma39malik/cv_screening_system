@@ -1,22 +1,28 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional
 import os
 
+from urllib.parse import quote_plus
+
 class Settings(BaseSettings):
     # ---- Database ----
-    postgres_host: str = "localhost"
-    postgres_port: int = 5432
-    postgres_db: str = "cv_screening"
-    postgres_user: str = "hr_admin"
-    postgres_password: str
+    postgres_host: str = Field(validation_alias="POSTGRES_HOST")
+    postgres_port: int = Field(5432, validation_alias="POSTGRES_PORT")
+    postgres_db: str = Field(validation_alias="POSTGRES_DB")
+    postgres_user: str = Field(validation_alias="POSTGRES_USER")
+    postgres_password: str = Field(validation_alias="POSTGRES_PASSWORD")
 
     @property
     def database_url(self) -> str:
-        return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-        )
+        # This handles the '@' in your password automatically
+        pw = quote_plus(self.postgres_password)
+        return f"postgresql+asyncpg://{self.postgres_user}:{pw}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        extra="ignore"
+    )
 
     @property
     def database_url_sync(self) -> str:
@@ -53,9 +59,9 @@ class Settings(BaseSettings):
     max_bulk_upload: int = 500
     embedding_dimension: int = 768
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    #class Config:
+    #    env_file = ".env"
+    #    case_sensitive = False
 
 
 # Singleton instance
