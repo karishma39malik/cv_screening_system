@@ -3,6 +3,9 @@ from sqlalchemy.orm import DeclarativeBase
 from config.settings import settings
 import structlog
 from sqlalchemy import text
+import asyncio
+from sqlalchemy.ext.asyncio import create_async_engine
+from config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -41,12 +44,12 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 
-async def check_db_health() -> bool:
-    """Ping the database. Used in health checks."""
+async def check_db_health():
+    engine = create_async_engine(settings.database_url)
     try:
-        async with AsyncSessionLocal() as session:
-            await session.execute(text("SELECT 1"))
-        return True
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1")) # Ensure 'text' is imported from sqlalchemy
+            return True
     except Exception as e:
-        logger.error("db_health_check_failed", error=str(e))
+        print(f"DATABASE CONNECTION ERROR: {e}") # This will show up in docker logs
         return False
