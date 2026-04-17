@@ -2,7 +2,10 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
+
 import structlog
+import json
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
@@ -20,17 +23,15 @@ class BaseAgent(ABC):
 
     def __init__(self, name: str, db: AsyncSession):
         self.name = name
-        self.db   = db
-        self.log  = logger.bind(agent=name)
+        self.db = db
+        self.log = logger.bind(agent=name)
 
-    async def run(self, payload: Dict[str, Any], correlation_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Entry point for every agent. Wraps execute() with:
-        - Timing
-        - Logging
-        - Error handling
-        - Audit trail writing
-        """
+    async def run(
+        self,
+        payload: Dict[str, Any],
+        correlation_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+
         correlation_id = correlation_id or str(uuid.uuid4())
         bound_log = self.log.bind(correlation_id=correlation_id)
 
@@ -39,6 +40,7 @@ class BaseAgent(ABC):
 
         try:
             result = await self.execute(payload, correlation_id)
+
             duration_ms = int((time.perf_counter() - start_time) * 1000)
 
             bound_log.info(
@@ -47,11 +49,13 @@ class BaseAgent(ABC):
                 outcome="success",
             )
 
-            # Write to audit log
             await self._write_audit(
                 correlation_id=correlation_id,
                 event_type=f"agent:{self.name}",
-                event_data={"input_keys": list(payload.keys()), "outcome": "success"},
+                event_data={
+                    "input_keys": list(payload.keys()),
+                    "outcome": "success"
+                },
                 outcome="success",
                 duration_ms=duration_ms,
             )
@@ -60,12 +64,20 @@ class BaseAgent(ABC):
 
         except Exception as e:
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            bound_log.error("agent_failed", error=str(e), duration_ms=duration_ms)
+
+            bound_log.error(
+                "agent_failed",
+                error=str(e),
+                duration_ms=duration_ms
+            )
 
             await self._write_audit(
                 correlation_id=correlation_id,
                 event_type=f"agent:{self.name}",
-                event_data={"input_keys": list(payload.keys()), "error": str(e)},
+                event_data={
+                    "input_keys": list(payload.keys()),
+                    "error": str(e)
+                },
                 outcome="failure",
                 duration_ms=duration_ms,
                 error_message=str(e),
@@ -74,8 +86,11 @@ class BaseAgent(ABC):
             raise
 
     @abstractmethod
-    async def execute(self, payload: Dict[str, Any], correlation_id: str) -> Dict[str, Any]:
-        """Subclasses implement their core logic here."""
+    async def execute(
+        self,
+        payload: Dict[str, Any],
+        correlation_id: str
+    ) -> Dict[str, Any]:
         pass
 
     async def _write_audit(
@@ -88,27 +103,26 @@ class BaseAgent(ABC):
         error_message: Optional[str] = None,
         **kwargs,
     ) -> None:
-        """Writes an immutable audit log entry."""
         try:
-            from sqlalchemy import text
             await self.db.execute(
                 text("""
                     INSERT INTO audit_logs
-                        (correlation_id, event_type, actor, event_data, outcome, duration_ms, error_message)
+                    (correlation_id, event_type, actor, event_data, outcome, duration_ms, error_message)
                     VALUES
-                        (:cid, :etype, :actor, :edata::jsonb, :outcome, :dur, :err)
+                    (:cid, :etype, :actor, CAST(:edata AS jsonb), :outcome, :dur, :err)
                 """),
                 {
-                    "cid":    correlation_id,
-                    "etype":  event_type,
-                    "actor":  f"agent:{self.name}",
-                    "edata":  str(event_data),
+                    "cid": correlation_id,
+                    "etype": event_type,
+                    "actor": self.name,
+                    "edata": json.dumps(event_data),
                     "outcome": outcome,
-                    "dur":    duration_ms,
-                    "err":    error_message,
-                },
+                    "dur": duration_ms,
+                    "err": error_message,
+                }
             )
             await self.db.commit()
+
         except Exception as log_err:
-            # Audit log failure must never crash the pipeline
+            await self.db.rollback()
             self.log.error("audit_write_failed", error=str(log_err))
