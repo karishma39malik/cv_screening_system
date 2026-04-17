@@ -1,11 +1,9 @@
-version: '3.9'
-
 services:
 
   # ---- PostgreSQL + pgvector ----
   postgres:
     image: pgvector/pgvector:pg16   # Official image with pgvector pre-installed
-    container_name: cv_screening
+    #container_name: cv_screening
     restart: unless-stopped
     environment:
       POSTGRES_DB:       ${POSTGRES_DB}
@@ -18,7 +16,7 @@ services:
       - "5432:5432"   # Only expose for dev. Remove in production.
     healthcheck:
       #test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      test: ["CMD-SHELL", "pg_isready -h ${POSTGRES_HOST} -p ${POSTGRES_PORT} -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -h localhost -p ${POSTGRES_PORT} -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -64,18 +62,18 @@ services:
         curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}' &&
         echo 'Models ready!'
       "
-    restart: "no"
+    #restart: "no"
 
   # ---- FastAPI Backend ----
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
-    container_name: cv_api
+    container_name: api
     restart: unless-stopped
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
       ollama:
         condition: service_started
     environment:
@@ -91,6 +89,7 @@ services:
       - UPLOAD_DIR=/app/uploads
       - LOG_DIR=/app/logs
       - ENVIRONMENT=${ENVIRONMENT}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     volumes:
       - uploads_data:/app/uploads    # CV file storage
       - logs_data:/app/logs          # Persistent logs
@@ -98,10 +97,10 @@ services:
       - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # ---- Streamlit Frontend ----
   frontend:
