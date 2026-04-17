@@ -1,12 +1,15 @@
 
 import streamlit as st
 import requests
+import os
 
 st.set_page_config(page_title="Post a Job", page_icon="📋")
 st.title("📋 Post a New Job")
 st.markdown("Upload a Job Description to begin accepting CV submissions.")
 
-API = "http://localhost:8000/api/v1"
+API_BASE = os.getenv("API_URL", "http://api:8000")
+API = f"{API_BASE}/api/v1"
+
 
 with st.form("create_job_form"):
     col1, col2 = st.columns(2)
