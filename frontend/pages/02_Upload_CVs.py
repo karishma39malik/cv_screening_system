@@ -2,18 +2,21 @@
 import streamlit as st
 import requests
 import time
+import os
 
 st.set_page_config(page_title="Upload CVs", page_icon="📤")
 st.title("📤 Upload CVs")
 st.markdown("Upload candidate CVs for AI-powered screening.")
 
-API = "http://localhost:8000/api/v1"
+# --- CHANGE THIS LINE ---
+API_BASE = os.getenv("API_URL", "http://api:8000")
+API = f"{API_BASE}/api/v1"
 
 # --- Job selection ---
 try:
     jobs = requests.get(f"{API}/jobs/", timeout=5).json()
     job_options = {f"{j['title']} — {j.get('department','')}": j['id'] for j in jobs}
-except Exception:
+except Exception as e:
     job_options = {}
     st.error("Cannot connect to API. Please ensure the system is running.")
 
