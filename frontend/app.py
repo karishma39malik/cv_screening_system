@@ -61,16 +61,26 @@ st.sidebar.info("Use the pages on the left to navigate between sections.")
 st.sidebar.markdown("---")
 st.sidebar.markdown("**System Status**")
 
-# Health check
+import os
 import requests
+
+# 1. Get the URL from the environment variable we set in docker-compose
+# This will resolve to http://api:8000 inside Docker
+API_URL = os.getenv("API_URL", "http://api:8000")
+
+# 2. Updated Health check block
 try:
-    r = requests.get("http://localhost:8000/health", timeout=3)
+    # We use the internal Docker URL here
+    r = requests.get(f"{API_URL}/health", timeout=5)
     h = r.json()
     st.sidebar.success("✅ API Online")
-    st.sidebar.markdown(f"Database: {'✅' if h['database'] else '❌'}")
-    st.sidebar.markdown(f"AI Engine: {'✅' if h['ollama'] else '❌'}")
-except Exception:
+    st.sidebar.markdown(f"Database: {'✅' if h.get('database') else '❌'}")
+    st.sidebar.markdown(f"AI Engine: {'✅' if h.get('ollama') else '❌'}")
+except Exception as e:
     st.sidebar.error("❌ API Offline")
+    # For debugging, you can uncomment the line below to see the error
+    # st.sidebar.write(f"Error: {e}")
+
 
 st.markdown("### Welcome to the HR Intelligence Platform")
 st.markdown("""
